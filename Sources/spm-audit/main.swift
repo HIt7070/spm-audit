@@ -1197,8 +1197,17 @@ struct SPMAudit: AsyncParsableCommand {
               Set GITHUB_TOKEN environment variable or use 'gh auth login' for
               higher API rate limits and access to private repositories.
             """,
-        version: "1.0.0",
         subcommands: [Audit.self, Update.self],
         defaultSubcommand: Audit.self
     )
+
+    @Flag(name: [.short, .long], help: "Show version information")
+    var version: Bool = false
+
+    func validate() throws {
+        if version {
+            print("spm-audit version \(currentVersion)")
+            throw ExitCode.success
+        }
+    }
 }
