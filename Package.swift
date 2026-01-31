@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -7,7 +7,8 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        .package(url: "https://github.com/apple/swift-testing.git", branch: "main")
     ],
     targets: [
         .executableTarget(
@@ -16,6 +17,20 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources"
+        ),
+        .testTarget(
+            name: "spm-audit-tests",
+            dependencies: [
+                "spm-audit",
+                .product(name: "Testing", package: "swift-testing")
+            ],
+            path: "spm-audit-tests/Fixtures",
+            resources: [
+                .copy("exactVersion"),
+                .copy("upToNextMajorVersion"),
+                .copy("upToNextMinorVersion"),
+                .copy("versionRange")
+            ]
         )
     ]
 )

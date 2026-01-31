@@ -18,7 +18,7 @@ struct PackageInfo: Codable {
     let requirementType: RequirementType?
 
     enum RequirementType: String, Codable {
-        case exact = "exact"
+        case exact = "exactVersion"
         case upToNextMajor = "upToNextMajorVersion"
         case upToNextMinor = "upToNextMinorVersion"
         case range = "versionRange"
@@ -79,8 +79,8 @@ struct PackageResolved: Codable {
 
 // MARK: - Main
 
-final class PackageUpdateChecker {
-    private let fileManager = FileManager.default
+final class PackageUpdateChecker: Sendable {
+    private nonisolated(unsafe) let fileManager = FileManager.default
     private let workingDirectory: String
     private let githubToken: String?
     private let includeTransitive: Bool
@@ -151,11 +151,16 @@ final class PackageUpdateChecker {
             }
         }
 
-        // Sort results by package name for consistent display
-        results.sort { $0.package.name < $1.package.name }
+        // Group results by source file path
+        let groupedResults = Dictionary(grouping: results) { result in
+            result.package.filePath
+        }
 
-        // Print results in table format
-        printTable(results)
+        // Print results grouped by source
+        for (filePath, packageResults) in groupedResults.sorted(by: { $0.key < $1.key }) {
+            let sortedResults = packageResults.sorted { $0.package.name < $1.package.name }
+            printTable(sortedResults, source: filePath)
+        }
     }
 
     // MARK: - Private Helpers
@@ -294,7 +299,8 @@ final class PackageUpdateChecker {
         var requirements: [String: PackageInfo.RequirementType] = [:]
 
         // Pattern to match XCRemoteSwiftPackageReference sections
-        let pattern = #"XCRemoteSwiftPackageReference[^}]+repositoryURL = "([^"]+)";[^}]+requirement = \{[^}]*kind = (\w+);"#
+        // Need to match content including nested braces
+        let pattern = #"XCRemoteSwiftPackageReference[\s\S]*?repositoryURL = "([^"]+)";[\s\S]*?requirement = \{[\s\S]*?kind = (\w+);"#
 
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
             return [:]
@@ -338,7 +344,11 @@ final class PackageUpdateChecker {
         return await fetchLatestRelease(owner: owner, repo: repo, package: package)
     }
 
-    private func printTable(_ results: [PackageUpdateResult]) {
+    private func printTable(_ results: [PackageUpdateResult], source: String) {
+        // Print source header
+        let sourceName = extractSourceName(from: source)
+        print("\n📋 \(sourceName)")
+        print(String(repeating: "─", count: 80))
         // Calculate column widths
         let nameWidth = max(
             results.map { $0.package.name.count }.max() ?? 0,
@@ -413,6 +423,31 @@ final class PackageUpdateChecker {
             return text
         }
         return text + String(repeating: " ", count: padding)
+    }
+
+    private func extractSourceName(from path: String) -> String {
+        // Extract a readable name from the file path
+        if path.contains("Package.swift") {
+            // For Package.swift files, get the package name from the directory
+            let components = path.components(separatedBy: "/")
+            if let packageIndex = components.lastIndex(where: { $0 == "Package.swift" }),
+               packageIndex > 0 {
+                return "\(components[packageIndex - 1]) (Package.swift)"
+            }
+            return "Package.swift"
+        } else if path.contains("Package.resolved") {
+            // For Package.resolved, try to get the project/package name
+            let components = path.components(separatedBy: "/")
+            if components.contains("Package.resolved") {
+                // Look for .xcodeproj in the path
+                if let xcodeIndex = components.firstIndex(where: { $0.hasSuffix(".xcodeproj") }) {
+                    let projectName = components[xcodeIndex].replacingOccurrences(of: ".xcodeproj", with: "")
+                    return "\(projectName) (Xcode Project)"
+                }
+            }
+            return "Package.resolved"
+        }
+        return path
     }
 
     private func getLatestAndStatus(_ status: PackageUpdateResult.UpdateStatus) -> (String, String) {
@@ -525,6 +560,28 @@ final class PackageUpdateChecker {
         }
 
         return false // Equal
+    }
+
+    // MARK: - Public Test Helpers
+
+    public func extractRequirementTypesPublic(from pbxprojPath: String) -> [String: PackageInfo.RequirementType] {
+        return extractRequirementTypes(from: pbxprojPath)
+    }
+
+    public func extractPackagesFromResolvedPublic(from filePath: String, includeTransitive: Bool) -> [PackageInfo] {
+        return extractPackagesFromResolved(from: filePath, includeTransitive: includeTransitive)
+    }
+
+    public func compareVersionsPublic(_ latest: String, _ current: String) -> Bool {
+        return compareVersions(latest, current)
+    }
+
+    public func normalizeVersionPublic(_ version: String) -> String {
+        return normalizeVersion(version)
+    }
+
+    public func extractSourceNamePublic(from path: String) -> String {
+        return extractSourceName(from: path)
     }
 }
 
