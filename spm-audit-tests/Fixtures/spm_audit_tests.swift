@@ -329,6 +329,29 @@ struct PackageUpdaterTests {
     }
 }
 
+struct VersionTests {
+
+    @Test("Version constant is valid semantic version")
+    func testVersionFormat() async throws {
+        // Version should be in semantic version format (X.Y.Z)
+        let components = currentVersion.split(separator: ".")
+
+        #expect(components.count == 3, "Version should have 3 components (major.minor.patch)")
+
+        // Each component should be a valid integer
+        for component in components {
+            #expect(Int(component) != nil, "Version component '\(component)' should be a number")
+        }
+    }
+
+    @Test("Version constant matches expected format")
+    func testVersionNotEmpty() async throws {
+        #expect(!currentVersion.isEmpty, "Version should not be empty")
+        #expect(!currentVersion.contains("v"), "Version should not contain 'v' prefix")
+        #expect(!currentVersion.contains(" "), "Version should not contain spaces")
+    }
+}
+
 // Expose internal methods for testing
 extension PackageUpdater {
     func isValidVersionPublic(_ version: String) -> Bool {
