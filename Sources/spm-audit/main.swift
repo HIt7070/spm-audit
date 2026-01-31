@@ -10,6 +10,41 @@ import ArgumentParser
 
 // MARK: - Models
 
+enum UpdateError: Error, CustomStringConvertible {
+    case packageNotFound(String)
+    case versionNotFound(package: String, version: String)
+    case invalidVersion(String)
+    case unsupportedRequirementType(PackageInfo.RequirementType)
+    case multipleSourcesFound(package: String, sources: [String])
+    case fileNotWritable(String)
+    case fileNotFound(String)
+    case parseError(String)
+    case xcodeProjectNotSupported(String)
+
+    var description: String {
+        switch self {
+        case .packageNotFound(let name):
+            return "Package '\(name)' not found in project"
+        case .versionNotFound(let package, let version):
+            return "Version '\(version)' not found for package '\(package)' on GitHub"
+        case .invalidVersion(let version):
+            return "Invalid version format: '\(version)'"
+        case .unsupportedRequirementType(let type):
+            return "Cannot update packages with requirement type '\(type.displayName)'. Only Exact, ^Major, ^Minor, and Range are supported."
+        case .multipleSourcesFound(let package, let sources):
+            return "Package '\(package)' found in multiple files: \(sources.joined(separator: ", "))"
+        case .fileNotWritable(let path):
+            return "File is not writable: \(path)"
+        case .fileNotFound(let path):
+            return "File not found: \(path)"
+        case .parseError(let message):
+            return "Parse error: \(message)"
+        case .xcodeProjectNotSupported(let packageName):
+            return "⚠️  Xcode project updates are not currently supported. Package '\(packageName)' is in an Xcode project. Please update it manually."
+        }
+    }
+}
+
 struct PackageInfo: Codable {
     let name: String
     let url: String
@@ -91,7 +126,7 @@ final class PackageUpdateChecker: Sendable {
         self.includeTransitive = includeTransitive
     }
 
-    private static func getGitHubToken() -> String? {
+    static func getGitHubToken() -> String? {
         // First check environment variable
         if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
             return token
@@ -585,19 +620,357 @@ final class PackageUpdateChecker: Sendable {
     }
 }
 
-// MARK: - Entry Point
+// MARK: - Package Updater
 
-@main
-struct SPMAudit: AsyncParsableCommand {
+final class PackageUpdater: Sendable {
+    private nonisolated(unsafe) let fileManager = FileManager.default
+    private let workingDirectory: String
+    private let githubToken: String?
+
+    init(workingDirectory: String? = nil) {
+        self.workingDirectory = workingDirectory ?? fileManager.currentDirectoryPath
+        self.githubToken = PackageUpdateChecker.getGitHubToken()
+    }
+
+    func updatePackage(name: String, to version: String?) async throws {
+        // Find the package
+        let packages = findPackagesByName(name)
+
+        guard !packages.isEmpty else {
+            throw UpdateError.packageNotFound(name)
+        }
+
+        // Check for multiple sources
+        let uniqueSources = Set(packages.map { $0.filePath })
+        if uniqueSources.count > 1 {
+            throw UpdateError.multipleSourcesFound(package: name, sources: Array(uniqueSources))
+        }
+
+        let package = packages[0]
+
+        // Determine target version
+        let targetVersion: String
+        if let version = version {
+            // Validate version format
+            guard isValidVersion(version) else {
+                throw UpdateError.invalidVersion(version)
+            }
+            // Verify version exists on GitHub
+            try await verifyVersionExists(package: package, version: version)
+            targetVersion = version
+        } else {
+            // Fetch latest version
+            targetVersion = try await fetchLatestVersion(package: package)
+        }
+
+        // Check for downgrade
+        if compareVersionsForDowngrade(targetVersion, package.currentVersion) {
+            print("⚠️  Warning: Downgrading \(package.name) from \(package.currentVersion) to \(targetVersion)")
+        }
+
+        // Update the file
+        try updateFile(package: package, newVersion: targetVersion)
+
+        print("✅ Updated \(package.name) from \(package.currentVersion) to \(targetVersion)")
+    }
+
+    func updateAllPackages() async throws {
+        let checker = PackageUpdateChecker(workingDirectory: workingDirectory, includeTransitive: false)
+        let packages = checker.findPackagesPublic()
+
+        guard !packages.isEmpty else {
+            print("❌ No packages found")
+            return
+        }
+
+        print("📦 Found \(packages.count) package(s)")
+        print("⚡️ Checking for updates...\n")
+
+        var updatedCount = 0
+        var errorCount = 0
+
+        for package in packages {
+            do {
+                let latestVersion = try await fetchLatestVersion(package: package)
+
+                if latestVersion != package.currentVersion {
+                    try updateFile(package: package, newVersion: latestVersion)
+                    print("✅ Updated \(package.name): \(package.currentVersion) → \(latestVersion)")
+                    updatedCount += 1
+                } else {
+                    print("ℹ️  \(package.name) is already up to date (\(package.currentVersion))")
+                }
+            } catch {
+                print("❌ Failed to update \(package.name): \(error)")
+                errorCount += 1
+            }
+        }
+
+        print("\n📊 Summary: Updated \(updatedCount) package(s), \(errorCount) error(s)")
+    }
+
+    // MARK: - Private Helpers
+
+    func findPackagesByName(_ name: String) -> [PackageInfo] {
+        let checker = PackageUpdateChecker(workingDirectory: workingDirectory, includeTransitive: false)
+        let allPackages = checker.findPackagesPublic()
+        return allPackages.filter { $0.name == name || $0.name.lowercased() == name.lowercased() }
+    }
+
+    func isValidVersion(_ version: String) -> Bool {
+        let components = version.split(separator: ".")
+        guard components.count >= 2 && components.count <= 3 else {
+            return false
+        }
+        return components.allSatisfy { Int($0) != nil }
+    }
+
+    private func verifyVersionExists(package: PackageInfo, version: String) async throws {
+        let releases = try await fetchAllReleases(package: package)
+        let normalizedVersion = normalizeVersion(version)
+
+        let exists = releases.contains { release in
+            let releaseVersion = normalizeVersion(release.tagName)
+            return releaseVersion == normalizedVersion
+        }
+
+        guard exists else {
+            throw UpdateError.versionNotFound(package: package.name, version: version)
+        }
+    }
+
+    private func fetchLatestVersion(package: PackageInfo) async throws -> String {
+        let releases = try await fetchAllReleases(package: package)
+
+        let stableReleases = releases.filter { !$0.prerelease }
+
+        guard let latestRelease = stableReleases.first else {
+            throw UpdateError.versionNotFound(package: package.name, version: "latest")
+        }
+
+        return normalizeVersion(latestRelease.tagName)
+    }
+
+    private func fetchAllReleases(package: PackageInfo) async throws -> [GitHubRelease] {
+        // Extract owner and repo from GitHub URL
+        let components = package.url.components(separatedBy: "/")
+        guard components.count >= 5,
+              let ownerIndex = components.firstIndex(of: "github.com"),
+              ownerIndex + 2 < components.count else {
+            throw UpdateError.parseError("Could not parse GitHub URL: \(package.url)")
+        }
+
+        let owner = components[ownerIndex + 1]
+        let repo = components[ownerIndex + 2]
+
+        let urlString = "https://api.github.com/repos/\(owner)/\(repo)/releases"
+
+        guard let url = URL(string: urlString) else {
+            throw UpdateError.parseError("Invalid API URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+
+        if let token = githubToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UpdateError.parseError("Invalid response")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            throw UpdateError.parseError("API error (status \(httpResponse.statusCode))")
+        }
+
+        return try JSONDecoder().decode([GitHubRelease].self, from: data)
+    }
+
+    private func compareVersionsForDowngrade(_ new: String, _ current: String) -> Bool {
+        let newComponents = new.split(separator: ".").compactMap { Int($0) }
+        let currentComponents = current.split(separator: ".").compactMap { Int($0) }
+
+        let maxLength = max(newComponents.count, currentComponents.count)
+        var newPadded = newComponents
+        var currentPadded = currentComponents
+
+        while newPadded.count < maxLength {
+            newPadded.append(0)
+        }
+        while currentPadded.count < maxLength {
+            currentPadded.append(0)
+        }
+
+        for (n, c) in zip(newPadded, currentPadded) {
+            if n < c {
+                return true  // Downgrade
+            } else if n > c {
+                return false // Upgrade
+            }
+        }
+
+        return false // Equal
+    }
+
+    private func normalizeVersion(_ version: String) -> String {
+        version.replacingOccurrences(of: "v", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func updateFile(package: PackageInfo, newVersion: String) throws {
+        // Check if this is an Xcode project (Package.resolved file)
+        if package.filePath.hasSuffix("Package.resolved") {
+            throw UpdateError.xcodeProjectNotSupported(package.name)
+        }
+
+        // Only support Package.swift files
+        guard package.filePath.hasSuffix("Package.swift") else {
+            throw UpdateError.parseError("Unknown file type: \(package.filePath)")
+        }
+
+        guard fileManager.isWritableFile(atPath: package.filePath) else {
+            throw UpdateError.fileNotWritable(package.filePath)
+        }
+
+        try updatePackageSwift(package: package, newVersion: newVersion)
+    }
+
+    private func updatePackageSwift(package: PackageInfo, newVersion: String) throws {
+        guard var content = try? String(contentsOfFile: package.filePath, encoding: .utf8) else {
+            throw UpdateError.fileNotFound(package.filePath)
+        }
+
+        // Pattern to match: url: "URL", exact: "VERSION"
+        let escapedURL = NSRegularExpression.escapedPattern(for: package.url)
+        let pattern = #"(url:\s*"\#(escapedURL)",\s*exact:\s*")([^"]+)(")"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            throw UpdateError.parseError("Could not create regex pattern")
+        }
+
+        let nsContent = content as NSString
+        let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsContent.length))
+
+        guard matches.count == 1 else {
+            throw UpdateError.parseError("Expected exactly one match for package URL in Package.swift")
+        }
+
+        let match = matches[0]
+        let versionRange = match.range(at: 2)
+
+        let before = nsContent.substring(to: versionRange.location)
+        let after = nsContent.substring(from: versionRange.location + versionRange.length)
+
+        content = before + newVersion + after
+
+        try content.write(toFile: package.filePath, atomically: true, encoding: .utf8)
+    }
+
+    private func updatePbxproj(package: PackageInfo, newVersion: String) throws {
+        // Get the project.pbxproj path from Package.resolved
+        let projectPath = (package.filePath as NSString).deletingLastPathComponent
+            .replacingOccurrences(of: "/project.xcworkspace/xcshareddata/swiftpm", with: "")
+        let pbxprojPath = "\(projectPath)/project.pbxproj"
+
+        guard fileManager.fileExists(atPath: pbxprojPath) else {
+            throw UpdateError.fileNotFound(pbxprojPath)
+        }
+
+        guard fileManager.isWritableFile(atPath: pbxprojPath) else {
+            throw UpdateError.fileNotWritable(pbxprojPath)
+        }
+
+        guard var content = try? String(contentsOfFile: pbxprojPath, encoding: .utf8) else {
+            throw UpdateError.fileNotFound(pbxprojPath)
+        }
+
+        guard let requirementType = package.requirementType else {
+            throw UpdateError.parseError("No requirement type found for package \(package.name)")
+        }
+
+        // Check for unsupported types
+        if requirementType == .branch || requirementType == .revision {
+            throw UpdateError.unsupportedRequirementType(requirementType)
+        }
+
+        // Create regex pattern based on requirement type
+        let escapedURL = NSRegularExpression.escapedPattern(for: package.url)
+        let pattern: String
+
+        switch requirementType {
+        case .exact:
+            // Match: version = X.Y.Z;
+            pattern = #"(XCRemoteSwiftPackageReference[\s\S]*?repositoryURL = "\#(escapedURL)(?:\.git)?";[\s\S]*?kind = exactVersion;\s*version = )([^;]+)(;)"#
+
+        case .upToNextMajor, .upToNextMinor:
+            // Match: minimumVersion = X.Y.Z;
+            pattern = #"(XCRemoteSwiftPackageReference[\s\S]*?repositoryURL = "\#(escapedURL)(?:\.git)?";[\s\S]*?kind = \#(requirementType.rawValue);\s*minimumVersion = )([^;]+)(;)"#
+
+        case .range:
+            // Match: minimumVersion = X.Y.Z; (keep maximumVersion)
+            pattern = #"(XCRemoteSwiftPackageReference[\s\S]*?repositoryURL = "\#(escapedURL)(?:\.git)?";[\s\S]*?kind = versionRange;(?:\s*maximumVersion = [^;]+;)?\s*minimumVersion = )([^;]+)(;)"#
+
+        case .branch, .revision:
+            throw UpdateError.unsupportedRequirementType(requirementType)
+        }
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
+            throw UpdateError.parseError("Could not create regex pattern")
+        }
+
+        let nsContent = content as NSString
+        let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsContent.length))
+
+        guard matches.count == 1 else {
+            throw UpdateError.parseError("Expected exactly one match for package URL in project.pbxproj (found \(matches.count))")
+        }
+
+        let match = matches[0]
+        let versionRange = match.range(at: 2)
+
+        let before = nsContent.substring(to: versionRange.location)
+        let after = nsContent.substring(from: versionRange.location + versionRange.length)
+
+        content = before + newVersion + after
+
+        try content.write(toFile: pbxprojPath, atomically: true, encoding: .utf8)
+    }
+}
+
+// Expose PackageUpdateChecker methods for PackageUpdater
+extension PackageUpdateChecker {
+    func findPackagesPublic() -> [PackageInfo] {
+        return findPackages()
+    }
+}
+
+// MARK: - Commands
+
+struct Audit: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "spm-audit",
-        abstract: "Check for Swift Package Manager dependency updates",
+        commandName: "audit",
+        abstract: "Check for available package updates without modifying files",
         discussion: """
-            Scans for Package.swift files with exact version dependencies and checks
-            GitHub for the latest available releases. Supports authentication via
-            GITHUB_TOKEN environment variable or gh CLI.
-            """,
-        version: "1.0.0"
+            Scans for Package.swift files and Xcode projects with SPM dependencies,
+            then checks GitHub for the latest available releases. This is a read-only
+            operation that reports which packages have updates available.
+
+            EXAMPLES:
+              # Check current directory
+              spm-audit audit
+
+              # Check specific directory
+              spm-audit audit /path/to/project
+
+              # Include transitive dependencies
+              spm-audit audit --all
+
+            The output shows a table with current versions, latest versions, and
+            whether updates are available. Use 'spm-audit update' to apply updates.
+            """
     )
 
     @Argument(
@@ -613,4 +986,165 @@ struct SPMAudit: AsyncParsableCommand {
         let checker = PackageUpdateChecker(workingDirectory: directory, includeTransitive: all)
         await checker.run()
     }
+}
+
+struct Update: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "update",
+        abstract: "Update package dependencies to newer versions",
+        discussion: """
+            Update package dependencies to their latest versions or to a specific version.
+            This command MODIFIES your Package.swift files.
+
+            ⚠️  IMPORTANT: Currently only supports Package.swift files.
+            Xcode projects must be updated manually to prevent Xcode crashes.
+
+            SUPPORTED REQUIREMENT TYPES:
+              • Exact version (exact: "1.0.0")
+
+            EXAMPLES:
+              # Update all packages to latest
+              spm-audit update all
+
+              # Update one package to latest
+              spm-audit update package swift-algorithms
+
+              # Update one package to specific version
+              spm-audit update package swift-algorithms --version 1.2.0
+
+              # Update packages in specific directory
+              spm-audit update all /path/to/project
+
+            Run 'spm-audit audit' first to see which packages have updates available.
+            """,
+        subcommands: [UpdateAll.self, UpdatePackage.self]
+    )
+}
+
+struct UpdateAll: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "all",
+        abstract: "Update all packages to their latest stable versions",
+        discussion: """
+            Updates all packages in Package.swift files to their latest stable versions
+            available on GitHub. Pre-release versions are skipped.
+
+            ⚠️  Note: Only updates Package.swift files. Xcode projects must be updated manually.
+
+            This command will:
+              1. Scan for all packages in Package.swift files
+              2. Fetch the latest stable version for each from GitHub
+              3. Update the Package.swift files
+              4. Show a summary of what was updated
+
+            EXAMPLES:
+              # Update all packages in current directory
+              spm-audit update all
+
+              # Update all packages in specific directory
+              spm-audit update all /path/to/project
+
+            TIP: Run 'spm-audit audit' first to preview what will be updated.
+            """
+    )
+
+    @Argument(
+        help: "The directory to scan for packages (defaults to current directory)",
+        completion: .directory
+    )
+    var directory: String?
+
+    func run() async throws {
+        let updater = PackageUpdater(workingDirectory: directory)
+        try await updater.updateAllPackages()
+    }
+}
+
+struct UpdatePackage: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "package",
+        abstract: "Update a specific package to latest or specific version",
+        discussion: """
+            Updates a specific package to the latest stable version or to a specified version.
+            The package name should match the repository name (e.g., "swift-algorithms").
+
+            ⚠️  Note: Only updates packages in Package.swift files. Xcode projects must be
+            updated manually through Xcode to prevent crashes.
+
+            This command will:
+              1. Find the package in your Package.swift files
+              2. Validate the target version exists on GitHub (if specified)
+              3. Update the Package.swift file
+              4. Warn if downgrading to an older version
+
+            EXAMPLES:
+              # Update to latest stable version
+              spm-audit update package swift-algorithms
+
+              # Update to specific version
+              spm-audit update package swift-algorithms --version 1.2.0
+              spm-audit update package swift-algorithms -v 1.2.0
+
+              # Update package in specific directory
+              spm-audit update package swift-algorithms /path/to/project
+
+            NOTE: The version will be validated against GitHub releases before updating.
+            """
+    )
+
+    @Argument(help: "The name of the package to update")
+    var name: String
+
+    @Option(name: .shortAndLong, help: "Update to a specific version (defaults to latest)")
+    var version: String?
+
+    @Argument(
+        help: "The directory to scan for packages (defaults to current directory)",
+        completion: .directory
+    )
+    var directory: String?
+
+    func run() async throws {
+        let updater = PackageUpdater(workingDirectory: directory)
+        try await updater.updatePackage(name: name, to: version)
+    }
+}
+
+// MARK: - Entry Point
+
+@main
+struct SPMAudit: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "spm-audit",
+        abstract: "Audit and update Swift Package Manager dependencies",
+        discussion: """
+            A tool to check for available updates and update Swift Package Manager dependencies.
+            Works with both Package.swift files and Xcode projects using SPM.
+
+            COMMANDS:
+              audit      Check for available updates (default)
+              update     Update packages to newer versions
+
+            EXAMPLES:
+              # Check for updates (default command)
+              spm-audit
+              spm-audit audit
+
+              # Update all packages to latest versions
+              spm-audit update all
+
+              # Update a specific package to latest
+              spm-audit update package swift-algorithms
+
+              # Update a specific package to a specific version
+              spm-audit update package swift-algorithms --version 1.2.0
+
+            AUTHENTICATION:
+              Set GITHUB_TOKEN environment variable or use 'gh auth login' for
+              higher API rate limits and access to private repositories.
+            """,
+        version: "1.0.0",
+        subcommands: [Audit.self, Update.self],
+        defaultSubcommand: Audit.self
+    )
 }

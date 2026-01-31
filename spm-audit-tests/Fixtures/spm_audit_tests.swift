@@ -185,3 +185,153 @@ struct SourceNameExtractionTests {
         #expect(sourceName == "Package.resolved")
     }
 }
+
+struct PackageUpdaterTests {
+
+    @Test("Reject Xcode project updates with clear error message")
+    func testRejectXcodeProjectUpdates() async throws {
+        let updater = PackageUpdater()
+        let fixturesURL = Bundle.module.resourceURL!.appendingPathComponent("exactVersion")
+
+        // Create a temporary copy
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let tempProjectDir = tempDir.appendingPathComponent("TestDrive.xcodeproj")
+        try FileManager.default.createDirectory(at: tempProjectDir, withIntermediateDirectories: true)
+
+        let workspaceDir = tempProjectDir.appendingPathComponent("project.xcworkspace/xcshareddata/swiftpm")
+        try FileManager.default.createDirectory(at: workspaceDir, withIntermediateDirectories: true)
+        let tempResolved = workspaceDir.appendingPathComponent("Package.resolved")
+        let sourceResolved = fixturesURL.appendingPathComponent("Package.resolved")
+        try FileManager.default.copyItem(at: sourceResolved, to: tempResolved)
+
+        // Try to update an Xcode project package
+        let package = PackageInfo(
+            name: "swift-algorithms",
+            url: "https://github.com/apple/swift-algorithms",
+            currentVersion: "0.2.0",
+            filePath: tempResolved.path,
+            requirementType: .exact
+        )
+
+        do {
+            try updater.updateFile(package: package, newVersion: "1.0.0")
+            #expect(Bool(false), "Should have thrown xcodeProjectNotSupported error")
+        } catch let error as UpdateError {
+            if case .xcodeProjectNotSupported(let name) = error {
+                #expect(name == "swift-algorithms")
+                #expect(error.description.contains("Xcode project updates are not currently supported"))
+            } else {
+                #expect(Bool(false), "Wrong error type: \(error)")
+            }
+        }
+
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    @Test("Update Package.swift successfully")
+    func testUpdatePackageSwift() async throws {
+        let updater = PackageUpdater()
+
+        // Create a temporary Package.swift file
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let packageSwiftPath = tempDir.appendingPathComponent("Package.swift")
+        let packageContent = """
+        // swift-tools-version: 5.9
+        import PackageDescription
+
+        let package = Package(
+            name: "TestPackage",
+            dependencies: [
+                .package(url: "https://github.com/apple/swift-algorithms", exact: "1.0.0")
+            ]
+        )
+        """
+        try packageContent.write(to: URL(fileURLWithPath: packageSwiftPath.path), atomically: true, encoding: .utf8)
+
+        let package = PackageInfo(
+            name: "swift-algorithms",
+            url: "https://github.com/apple/swift-algorithms",
+            currentVersion: "1.0.0",
+            filePath: packageSwiftPath.path,
+            requirementType: .exact
+        )
+
+        try updater.updateFile(package: package, newVersion: "1.2.0")
+
+        // Verify the update
+        let updatedContent = try String(contentsOfFile: packageSwiftPath.path, encoding: .utf8)
+        #expect(updatedContent.contains("exact: \"1.2.0\""))
+        #expect(!updatedContent.contains("exact: \"1.0.0\""))
+
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    @Test("Validate version format")
+    func testValidateVersionFormat() async throws {
+        let updater = PackageUpdater()
+
+        #expect(updater.isValidVersionPublic("1.0.0") == true)
+        #expect(updater.isValidVersionPublic("1.0") == true)
+        #expect(updater.isValidVersionPublic("2.1.3") == true)
+        #expect(updater.isValidVersionPublic("invalid") == false)
+        #expect(updater.isValidVersionPublic("1") == false)
+        #expect(updater.isValidVersionPublic("1.2.3.4") == false)
+    }
+
+    @Test("Update multiple packages in Package.swift")
+    func testUpdateMultiplePackages() async throws {
+        let updater = PackageUpdater()
+
+        // Create a temporary Package.swift with multiple packages
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let packageSwiftPath = tempDir.appendingPathComponent("Package.swift")
+        let packageContent = """
+        // swift-tools-version: 5.9
+        import PackageDescription
+
+        let package = Package(
+            name: "TestPackage",
+            dependencies: [
+                .package(url: "https://github.com/apple/swift-algorithms", exact: "1.0.0"),
+                .package(url: "https://github.com/pointfreeco/swift-composable-architecture", exact: "1.5.0")
+            ]
+        )
+        """
+        try packageContent.write(to: URL(fileURLWithPath: packageSwiftPath.path), atomically: true, encoding: .utf8)
+
+        let package = PackageInfo(
+            name: "swift-algorithms",
+            url: "https://github.com/apple/swift-algorithms",
+            currentVersion: "1.0.0",
+            filePath: packageSwiftPath.path,
+            requirementType: .exact
+        )
+
+        try updater.updateFile(package: package, newVersion: "1.2.0")
+
+        // Verify only the specific package was updated
+        let updatedContent = try String(contentsOfFile: packageSwiftPath.path, encoding: .utf8)
+        #expect(updatedContent.contains("exact: \"1.2.0\""))
+        #expect(!updatedContent.contains("exact: \"1.0.0\""))
+        // Other package should remain unchanged
+        #expect(updatedContent.contains("exact: \"1.5.0\""))
+
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+// Expose internal methods for testing
+extension PackageUpdater {
+    func isValidVersionPublic(_ version: String) -> Bool {
+        return isValidVersion(version)
+    }
+}
