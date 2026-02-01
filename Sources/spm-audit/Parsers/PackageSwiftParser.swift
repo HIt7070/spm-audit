@@ -43,7 +43,8 @@ enum PackageSwiftParser {
                     url: url,
                     currentVersion: version,
                     filePath: filePath,
-                    requirementType: .exact
+                    requirementType: .exact,
+                    swiftVersion: nil
                 ))
             }
         }

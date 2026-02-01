@@ -13,6 +13,7 @@ struct PackageInfo: Codable {
     let currentVersion: String
     let filePath: String
     let requirementType: RequirementType?
+    let swiftVersion: String?
 
     enum RequirementType: String, Codable {
         case exact = "exactVersion"

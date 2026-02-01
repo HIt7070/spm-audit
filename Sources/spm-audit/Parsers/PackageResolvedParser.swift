@@ -54,7 +54,8 @@ enum PackageResolvedParser {
                 url: cleanURL,
                 currentVersion: version,
                 filePath: filePath,
-                requirementType: requirementType
+                requirementType: requirementType,
+                swiftVersion: nil
             ))
         }
 
