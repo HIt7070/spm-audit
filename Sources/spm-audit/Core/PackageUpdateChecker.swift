@@ -54,7 +54,7 @@ final class PackageUpdateChecker: Sendable {
         // Print results grouped by source
         for (filePath, packageResults) in groupedResults.sorted(by: { $0.key < $1.key }) {
             let sortedResults = packageResults.sorted { $0.package.name < $1.package.name }
-            let readmeStatus = checkLocalReadme(for: filePath)
+            let readmeStatus = checkReadmeInDirectory(for: filePath)
             OutputFormatter.printTable(sortedResults, source: filePath, readmeStatus: readmeStatus)
         }
     }
@@ -123,9 +123,32 @@ final class PackageUpdateChecker: Sendable {
         )
     }
 
-    private func checkLocalReadme(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
-        // Simply check if README.md exists in the working directory
-        let readmePath = (workingDirectory as NSString).appendingPathComponent("README.md")
+    private func checkReadmeInDirectory(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
+        // Determine the directory to check based on the file path
+        let directory: String
+
+        if filePath.hasSuffix("Package.swift") {
+            // For Package.swift, check in the same directory
+            directory = (filePath as NSString).deletingLastPathComponent
+        } else if filePath.contains("Package.resolved") {
+            // For Package.resolved in Xcode projects, check the project root
+            if filePath.contains(".xcodeproj") {
+                let components = filePath.components(separatedBy: "/")
+                if let xcodeIndex = components.firstIndex(where: { $0.hasSuffix(".xcodeproj") }) {
+                    let projectComponents = components.prefix(xcodeIndex)
+                    directory = projectComponents.joined(separator: "/")
+                } else {
+                    directory = (filePath as NSString).deletingLastPathComponent
+                }
+            } else {
+                // For standalone Package.resolved, check in the same directory
+                directory = (filePath as NSString).deletingLastPathComponent
+            }
+        } else {
+            directory = workingDirectory
+        }
+
+        let readmePath = (directory as NSString).appendingPathComponent("README.md")
         return fileManager.fileExists(atPath: readmePath) ? .present : .missing
     }
 
@@ -171,7 +194,7 @@ final class PackageUpdateChecker: Sendable {
         return findPackages()
     }
 
-    public func checkLocalReadmePublic(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
-        return checkLocalReadme(for: filePath)
+    public func checkReadmeInDirectoryPublic(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
+        return checkReadmeInDirectory(for: filePath)
     }
 }
