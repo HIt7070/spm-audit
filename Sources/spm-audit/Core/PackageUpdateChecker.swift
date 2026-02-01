@@ -20,12 +20,26 @@ final class PackageUpdateChecker: Sendable {
     }
 
     func run() async {
-        print("🔍 Scanning for Package.swift and Xcode project files...\n")
+        print("🔍 Auditing project...\n")
 
+        // Find all package files (even if they don't have auditable packages)
+        let packageFiles = findPackageFiles()
         let packages = findPackages()
 
         if packages.isEmpty {
-            print("❌ No packages with exact versions found.")
+            print("⚠️  No packages with exact versions found.")
+
+            // Still check and display README status for discovered files
+            if !packageFiles.isEmpty {
+                print("\n📄 README Status:\n")
+                for filePath in packageFiles.sorted() {
+                    let readmeStatus = checkReadmeInDirectory(for: filePath)
+                    let sourceName = OutputFormatter.extractSourceNamePublic(from: filePath)
+                    let indicator = getReadmeIndicator(readmeStatus)
+                    let text = getReadmeText(readmeStatus)
+                    print("  \(indicator) \(sourceName): \(text)")
+                }
+            }
             return
         }
 
@@ -60,6 +74,29 @@ final class PackageUpdateChecker: Sendable {
     }
 
     // MARK: - Private Helpers
+
+    private func findPackageFiles() -> [String] {
+        var files: [String] = []
+
+        guard let enumerator = fileManager.enumerator(atPath: workingDirectory) else {
+            return files
+        }
+
+        for case let path as String in enumerator {
+            // Skip .build directories and test fixtures
+            if path.contains("/.build/") || path.hasPrefix(".build/") ||
+               path.contains("/Fixtures/") || path.contains("-tests/") {
+                continue
+            }
+
+            if path.hasSuffix("Package.swift") || path.hasSuffix("Package.resolved") {
+                let fullPath = (workingDirectory as NSString).appendingPathComponent(path)
+                files.append(fullPath)
+            }
+        }
+
+        return files
+    }
 
     private func findPackages() -> [PackageInfo] {
         var packages: [PackageInfo] = []
@@ -121,6 +158,28 @@ final class PackageUpdateChecker: Sendable {
             status: result.status,
             readmeStatus: .unknown
         )
+    }
+
+    private func getReadmeIndicator(_ readmeStatus: PackageUpdateResult.ReadmeStatus) -> String {
+        switch readmeStatus {
+        case .present:
+            return "✅"
+        case .missing:
+            return "❌"
+        case .unknown:
+            return "❓"
+        }
+    }
+
+    private func getReadmeText(_ readmeStatus: PackageUpdateResult.ReadmeStatus) -> String {
+        switch readmeStatus {
+        case .present:
+            return "Has README"
+        case .missing:
+            return "Missing README"
+        case .unknown:
+            return "README status unknown"
+        }
     }
 
     private func checkReadmeInDirectory(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
