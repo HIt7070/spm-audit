@@ -24,4 +24,50 @@ struct PackageUpdateResult {
         case missing
         case unknown
     }
+
+    enum LicenseType {
+        case gpl
+        case agpl
+        case lgpl
+        case mit
+        case apache
+        case bsd
+        case mpl
+        case unlicense
+        case isc
+        case cc0
+        case epl
+        case eupl
+        case artistic
+        case boost
+        case wtfpl
+        case zlib
+        case other(String)
+        case missing
+        case unknown
+
+        var displayName: String {
+            switch self {
+            case .gpl: return "GPL"
+            case .agpl: return "AGPL"
+            case .lgpl: return "LGPL"
+            case .mit: return "MIT"
+            case .apache: return "Apache"
+            case .bsd: return "BSD"
+            case .mpl: return "MPL"
+            case .unlicense: return "Unlicense"
+            case .isc: return "ISC"
+            case .cc0: return "CC0"
+            case .epl: return "EPL"
+            case .eupl: return "EUPL"
+            case .artistic: return "Artistic"
+            case .boost: return "Boost"
+            case .wtfpl: return "WTFPL"
+            case .zlib: return "Zlib"
+            case .other(let name): return name
+            case .missing: return "No License"
+            case .unknown: return "Unknown"
+            }
+        }
+    }
 }

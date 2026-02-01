@@ -9,7 +9,7 @@ import Foundation
 
 enum OutputFormatter {
     /// Print a formatted table of package update results
-    static func printTable(_ results: [PackageUpdateResult], source: String, readmeStatus: PackageUpdateResult.ReadmeStatus) {
+    static func printTable(_ results: [PackageUpdateResult], source: String, readmeStatus: PackageUpdateResult.ReadmeStatus, licenseType: PackageUpdateResult.LicenseType) {
         // Print source header
         let sourceName = extractSourceName(from: source)
         print("\n📋 \(sourceName)")
@@ -78,6 +78,10 @@ enum OutputFormatter {
         let readmeIndicator = getReadmeIndicator(readmeStatus)
         let readmeText = getReadmeText(readmeStatus)
         print("\n📄 Project README: \(readmeIndicator) \(readmeText)")
+
+        // Print project/package License status
+        let licenseIndicator = getLicenseIndicator(licenseType)
+        print("⚖️  Project License: \(licenseIndicator) \(licenseType.displayName)")
 
         // Print summary
         let updateCount = results.filter {
@@ -153,6 +157,23 @@ enum OutputFormatter {
             return "Missing README"
         case .unknown:
             return "README status unknown"
+        }
+    }
+
+    private static func getLicenseIndicator(_ licenseType: PackageUpdateResult.LicenseType) -> String {
+        switch licenseType {
+        case .gpl, .agpl, .lgpl, .mpl, .epl, .eupl:
+            // Copyleft licenses - require derivative works to use same license
+            return "⚠️ "
+        case .mit, .apache, .bsd, .isc, .unlicense, .cc0, .boost, .wtfpl, .zlib, .artistic:
+            // Permissive licenses - minimal restrictions
+            return "✅"
+        case .other:
+            return "ℹ️ "
+        case .missing:
+            return "❌"
+        case .unknown:
+            return "❓"
         }
     }
 

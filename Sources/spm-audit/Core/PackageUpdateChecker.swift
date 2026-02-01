@@ -29,7 +29,7 @@ final class PackageUpdateChecker: Sendable {
         if packages.isEmpty {
             print("⚠️  No packages with exact versions found.")
 
-            // Still check and display README status for discovered files
+            // Still check and display README and License status for discovered files
             if !packageFiles.isEmpty {
                 print("\n📄 README Status:\n")
                 for filePath in packageFiles.sorted() {
@@ -38,6 +38,14 @@ final class PackageUpdateChecker: Sendable {
                     let indicator = getReadmeIndicator(readmeStatus)
                     let text = getReadmeText(readmeStatus)
                     print("  \(indicator) \(sourceName): \(text)")
+                }
+
+                print("\n⚖️  License Status:\n")
+                for filePath in packageFiles.sorted() {
+                    let licenseType = checkLicenseInDirectory(for: filePath)
+                    let sourceName = OutputFormatter.extractSourceNamePublic(from: filePath)
+                    let indicator = getLicenseIndicator(licenseType)
+                    print("  \(indicator) \(sourceName): \(licenseType.displayName)")
                 }
             }
             return
@@ -69,7 +77,8 @@ final class PackageUpdateChecker: Sendable {
         for (filePath, packageResults) in groupedResults.sorted(by: { $0.key < $1.key }) {
             let sortedResults = packageResults.sorted { $0.package.name < $1.package.name }
             let readmeStatus = checkReadmeInDirectory(for: filePath)
-            OutputFormatter.printTable(sortedResults, source: filePath, readmeStatus: readmeStatus)
+            let licenseType = checkLicenseInDirectory(for: filePath)
+            OutputFormatter.printTable(sortedResults, source: filePath, readmeStatus: readmeStatus, licenseType: licenseType)
         }
     }
 
@@ -182,6 +191,23 @@ final class PackageUpdateChecker: Sendable {
         }
     }
 
+    private func getLicenseIndicator(_ licenseType: PackageUpdateResult.LicenseType) -> String {
+        switch licenseType {
+        case .gpl, .agpl, .lgpl, .mpl, .epl, .eupl:
+            // Copyleft licenses - require derivative works to use same license
+            return "⚠️ "
+        case .mit, .apache, .bsd, .isc, .unlicense, .cc0, .boost, .wtfpl, .zlib, .artistic:
+            // Permissive licenses - minimal restrictions
+            return "✅"
+        case .other:
+            return "ℹ️ "
+        case .missing:
+            return "❌"
+        case .unknown:
+            return "❓"
+        }
+    }
+
     private func checkReadmeInDirectory(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
         // Determine the directory to check based on the file path
         let directory: String
@@ -209,6 +235,127 @@ final class PackageUpdateChecker: Sendable {
 
         let readmePath = (directory as NSString).appendingPathComponent("README.md")
         return fileManager.fileExists(atPath: readmePath) ? .present : .missing
+    }
+
+    private func checkLicenseInDirectory(for filePath: String) -> PackageUpdateResult.LicenseType {
+        let directory = getDirectoryPath(for: filePath)
+
+        // Common license file names
+        let licenseFileNames = ["LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING", "COPYING.txt", "LICENSE-MIT", "LICENSE-APACHE"]
+
+        // Find the first license file that exists
+        for fileName in licenseFileNames {
+            let licensePath = (directory as NSString).appendingPathComponent(fileName)
+            if fileManager.fileExists(atPath: licensePath),
+               let content = try? String(contentsOfFile: licensePath, encoding: .utf8) {
+                return detectLicenseType(from: content)
+            }
+        }
+
+        return .missing
+    }
+
+    private func detectLicenseType(from content: String) -> PackageUpdateResult.LicenseType {
+        let uppercased = content.uppercased()
+
+        // Check for specific license types based on content (ordered by specificity)
+
+        // GNU licenses (check most specific first)
+        if uppercased.contains("GNU AFFERO GENERAL PUBLIC LICENSE") ||
+           (uppercased.contains("AGPL") && uppercased.contains("VERSION")) {
+            return .agpl
+        } else if uppercased.contains("GNU LESSER GENERAL PUBLIC LICENSE") ||
+                  uppercased.contains("GNU LIBRARY GENERAL PUBLIC LICENSE") ||
+                  (uppercased.contains("LGPL") && uppercased.contains("VERSION")) {
+            return .lgpl
+        } else if uppercased.contains("GNU GENERAL PUBLIC LICENSE") ||
+                  (uppercased.contains("GPL") && uppercased.contains("VERSION") &&
+                   !uppercased.contains("LGPL") && !uppercased.contains("AGPL")) {
+            return .gpl
+        }
+
+        // Permissive licenses
+        else if uppercased.contains("MIT LICENSE") ||
+                (uppercased.contains("MIT") && uppercased.contains("PERMISSION IS HEREBY GRANTED")) {
+            return .mit
+        } else if uppercased.contains("APACHE LICENSE") ||
+                  (uppercased.contains("APACHE") && uppercased.contains("VERSION 2.0")) {
+            return .apache
+        } else if (uppercased.contains("BSD") && uppercased.contains("REDISTRIBUTION")) ||
+                  uppercased.contains("BSD-2-CLAUSE") ||
+                  uppercased.contains("BSD-3-CLAUSE") {
+            return .bsd
+        } else if uppercased.contains("ISC LICENSE") ||
+                  (uppercased.contains("ISC") && uppercased.contains("PERMISSION TO USE")) {
+            return .isc
+        }
+
+        // Mozilla and other copyleft
+        else if uppercased.contains("MOZILLA PUBLIC LICENSE") ||
+                (uppercased.contains("MPL") && uppercased.contains("VERSION")) {
+            return .mpl
+        } else if uppercased.contains("ECLIPSE PUBLIC LICENSE") ||
+                  uppercased.contains("EPL") {
+            return .epl
+        } else if uppercased.contains("EUROPEAN UNION PUBLIC LICENCE") ||
+                  uppercased.contains("EUPL") {
+            return .eupl
+        }
+
+        // Public domain and permissive
+        else if uppercased.contains("UNLICENSE") ||
+                uppercased.contains("THIS IS FREE AND UNENCUMBERED SOFTWARE RELEASED INTO THE PUBLIC DOMAIN") {
+            return .unlicense
+        } else if uppercased.contains("CC0") ||
+                  uppercased.contains("CREATIVE COMMONS ZERO") {
+            return .cc0
+        }
+
+        // Other known licenses
+        else if uppercased.contains("ARTISTIC LICENSE") {
+            return .artistic
+        } else if uppercased.contains("BOOST SOFTWARE LICENSE") {
+            return .boost
+        } else if uppercased.contains("WTFPL") ||
+                  uppercased.contains("DO WHAT THE FUCK YOU WANT") {
+            return .wtfpl
+        } else if uppercased.contains("ZLIB LICENSE") {
+            return .zlib
+        }
+
+        // Unknown license - try to extract first line
+        else {
+            let lines = content.components(separatedBy: .newlines)
+            if let firstLine = lines.first?.trimmingCharacters(in: .whitespaces),
+               !firstLine.isEmpty {
+                return .other(firstLine.prefix(50).description)
+            }
+            return .unknown
+        }
+    }
+
+    private func getDirectoryPath(for filePath: String) -> String {
+        // Determine the directory to check based on the file path
+        if filePath.hasSuffix("Package.swift") {
+            // For Package.swift, check in the same directory
+            return (filePath as NSString).deletingLastPathComponent
+        } else if filePath.contains("Package.resolved") {
+            // For Package.resolved in Xcode projects, check the project root
+            if filePath.contains(".xcodeproj") {
+                let components = filePath.components(separatedBy: "/")
+                if let xcodeIndex = components.firstIndex(where: { $0.hasSuffix(".xcodeproj") }) {
+                    let projectComponents = components.prefix(xcodeIndex)
+                    return projectComponents.joined(separator: "/")
+                } else {
+                    return (filePath as NSString).deletingLastPathComponent
+                }
+            } else {
+                // For standalone Package.resolved, check in the same directory
+                return (filePath as NSString).deletingLastPathComponent
+            }
+        } else {
+            return workingDirectory
+        }
     }
 
     // MARK: - Public Test Helpers
