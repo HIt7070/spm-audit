@@ -105,7 +105,7 @@ final class PackageUpdateChecker: Sendable {
         }
     }
 
-    private func extractSwiftVersion(from checkoutPath: String) -> String? {
+    func extractSwiftVersion(from checkoutPath: String) -> String? {
         // Check if the checkout directory exists
         guard fileManager.fileExists(atPath: checkoutPath) else {
             return nil

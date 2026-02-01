@@ -585,6 +585,88 @@ struct ReadmeStatusTests {
             #expect(Bool(false), "Expected updateAvailable status")
         }
     }
+
+    @Test("Swift version is extracted from Package.swift")
+    func testSwiftVersionExtraction() async throws {
+        // Create a temporary directory structure that mimics .build/checkouts
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("test-swift-version-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        // Create a fake Package.swift with swift-tools-version
+        let packageSwiftContent = """
+        // swift-tools-version: 5.9
+        // The swift-tools-version declares the minimum version of Swift required to build this package.
+
+        import PackageDescription
+
+        let package = Package(
+            name: "TestPackage",
+            products: [.library(name: "TestPackage", targets: ["TestPackage"])],
+            targets: [.target(name: "TestPackage")]
+        )
+        """
+
+        let packageSwiftPath = tempDir.appendingPathComponent("Package.swift")
+        try packageSwiftContent.write(to: packageSwiftPath, atomically: true, encoding: .utf8)
+
+        // Test extraction
+        let checker = PackageUpdateChecker(workingDirectory: tempDir.path)
+        let swiftVersion = checker.extractSwiftVersion(from: tempDir.path)
+
+        #expect(swiftVersion == "5.9")
+
+        // Test PackageInfo with Swift version
+        let packageWithSwift = PackageInfo(
+            name: "TestPackage",
+            url: "https://github.com/test/package",
+            currentVersion: "1.0.0",
+            filePath: "/test/path",
+            requirementType: .exact,
+            swiftVersion: "5.9"
+        )
+
+        #expect(packageWithSwift.swiftVersion == "5.9")
+
+        // Test PackageInfo without Swift version (shows N/A in output)
+        let packageWithoutSwift = PackageInfo(
+            name: "TestPackage",
+            url: "https://github.com/test/package",
+            currentVersion: "1.0.0",
+            filePath: "/test/path",
+            requirementType: .exact,
+            swiftVersion: nil
+        )
+
+        #expect(packageWithoutSwift.swiftVersion == nil)
+
+        // Clean up
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    @Test("Swift version extraction handles different formats")
+    func testSwiftVersionFormats() async throws {
+        let checker = PackageUpdateChecker()
+
+        // Test with colon and space
+        let tempDir1 = FileManager.default.temporaryDirectory.appendingPathComponent("test-swift-formats-1-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir1, withIntermediateDirectories: true)
+        let content1 = "// swift-tools-version: 6.0\n"
+        let path1 = tempDir1.appendingPathComponent("Package.swift")
+        try content1.write(to: path1, atomically: true, encoding: .utf8)
+        let version1 = checker.extractSwiftVersion(from: tempDir1.path)
+        #expect(version1 == "6.0")
+        try? FileManager.default.removeItem(at: tempDir1)
+
+        // Test with colon but no space
+        let tempDir2 = FileManager.default.temporaryDirectory.appendingPathComponent("test-swift-formats-2-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir2, withIntermediateDirectories: true)
+        let content2 = "// swift-tools-version:5.7\n"
+        let path2 = tempDir2.appendingPathComponent("Package.swift")
+        try content2.write(to: path2, atomically: true, encoding: .utf8)
+        let version2 = checker.extractSwiftVersion(from: tempDir2.path)
+        #expect(version2 == "5.7")
+        try? FileManager.default.removeItem(at: tempDir2)
+    }
 }
 
 // Expose internal methods for testing
