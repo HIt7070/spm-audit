@@ -45,7 +45,10 @@ enum OutputFormatter {
             "Latest".count
         ) + 2
 
-        let statusWidth = 20
+        let statusWidth = max(
+            "⚠️  Update available".count,
+            "Status".count
+        ) + 2
 
         let readmeWidth = 8 // "README" or icons
 
