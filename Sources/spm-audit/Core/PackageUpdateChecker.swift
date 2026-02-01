@@ -31,11 +31,9 @@ final class PackageUpdateChecker: Sendable {
             // Check in the working directory (root project)
             let readmeStatus = checkReadmeInDirectory(for: workingDirectory)
             let licenseType = checkLicenseInDirectory(for: workingDirectory)
-            let localPackages = findLocalPackages()
 
             print("\n📄 Project README: \(getReadmeIndicator(readmeStatus)) \(getReadmeText(readmeStatus))")
             print("⚖️  Project License: \(getLicenseIndicator(licenseType)) \(licenseType.displayName)")
-            printLocalPackageSwiftVersions(localPackages)
 
             return
         }
@@ -69,71 +67,9 @@ final class PackageUpdateChecker: Sendable {
             let licenseType = checkLicenseInDirectory(for: filePath)
             OutputFormatter.printTable(sortedResults, source: filePath, readmeStatus: readmeStatus, licenseType: licenseType)
         }
-
-        // Print local package Swift versions at the end
-        let localPackages = findLocalPackages()
-        printLocalPackageSwiftVersions(localPackages)
     }
 
     // MARK: - Private Helpers
-
-    private struct LocalPackage {
-        let name: String
-        let path: String
-        let swiftVersion: String?
-    }
-
-    private func findLocalPackages() -> [LocalPackage] {
-        var localPackages: [LocalPackage] = []
-
-        guard let enumerator = fileManager.enumerator(atPath: workingDirectory) else {
-            return localPackages
-        }
-
-        for case let path as String in enumerator {
-            // Skip .build directories, test fixtures, and DerivedData
-            if path.contains("/.build/") || path.hasPrefix(".build/") ||
-               path.contains("/Fixtures/") || path.contains("-tests/") ||
-               path.contains("DerivedData/") {
-                continue
-            }
-
-            if path.hasSuffix("Package.swift") {
-                let fullPath = (workingDirectory as NSString).appendingPathComponent(path)
-                let packageDir = (fullPath as NSString).deletingLastPathComponent
-                let packageName = (packageDir as NSString).lastPathComponent
-
-                // Extract swift-tools-version
-                let swiftVersion = extractSwiftVersion(from: packageDir)
-
-                localPackages.append(LocalPackage(
-                    name: packageName,
-                    path: packageDir,
-                    swiftVersion: swiftVersion
-                ))
-            }
-        }
-
-        // Sort by name
-        return localPackages.sorted { $0.name < $1.name }
-    }
-
-    private func printLocalPackageSwiftVersions(_ localPackages: [LocalPackage]) {
-        guard !localPackages.isEmpty else {
-            return
-        }
-
-        print("\n📦 Local Package Details:\n")
-        for package in localPackages {
-            // Check README and License for each local package
-            let readmeStatus = checkReadmeInDirectory(for: package.path)
-            let licenseType = checkLicenseInDirectory(for: package.path)
-            let readmeInd = getReadmeIndicator(readmeStatus)
-            let licenseInd = getLicenseIndicator(licenseType)
-            let swiftVersion = package.swiftVersion ?? "N/A"
-            print("  \(package.name): \(readmeInd) README | \(licenseInd) \(licenseType.displayName) | Swift \(swiftVersion)")
-        }
-    }
 
     private func findPackages() -> [PackageInfo] {
         var packages: [PackageInfo] = []
