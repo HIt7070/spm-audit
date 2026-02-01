@@ -212,7 +212,8 @@ struct PackageUpdaterTests {
             url: "https://github.com/apple/swift-algorithms",
             currentVersion: "0.2.0",
             filePath: tempResolved.path,
-            requirementType: .exact
+            requirementType: .exact,
+        swiftVersion: nil
         )
 
         do {
@@ -258,7 +259,8 @@ struct PackageUpdaterTests {
             url: "https://github.com/apple/swift-algorithms",
             currentVersion: "1.0.0",
             filePath: packageSwiftPath.path,
-            requirementType: .exact
+            requirementType: .exact,
+        swiftVersion: nil
         )
 
         try updater.updateFile(package: package, newVersion: "1.2.0")
@@ -312,7 +314,8 @@ struct PackageUpdaterTests {
             url: "https://github.com/apple/swift-algorithms",
             currentVersion: "1.0.0",
             filePath: packageSwiftPath.path,
-            requirementType: .exact
+            requirementType: .exact,
+        swiftVersion: nil
         )
 
         try updater.updateFile(package: package, newVersion: "1.2.0")
@@ -501,7 +504,8 @@ struct ReadmeStatusTests {
             url: "https://github.com/test/package",
             currentVersion: "1.0.0",
             filePath: "/test/path",
-            requirementType: .exact
+            requirementType: .exact,
+        swiftVersion: nil
         )
 
         let presentResult = PackageUpdateResult(
@@ -538,7 +542,8 @@ struct ReadmeStatusTests {
             url: "https://github.com/test/package",
             currentVersion: "1.0.0",
             filePath: "/test/path",
-            requirementType: .exact
+            requirementType: .exact,
+        swiftVersion: nil
         )
 
         // We can't directly test the private getReadmeIndicator method,
@@ -559,7 +564,8 @@ struct ReadmeStatusTests {
             url: "https://github.com/apple/swift-algorithms",
             currentVersion: "1.0.0",
             filePath: "/test/Package.resolved",
-            requirementType: .upToNextMajor
+            requirementType: .upToNextMajor,
+        swiftVersion: nil
         )
 
         let result = PackageUpdateResult(

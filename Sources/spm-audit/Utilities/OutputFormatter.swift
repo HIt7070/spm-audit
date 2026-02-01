@@ -28,6 +28,11 @@ enum OutputFormatter {
             "Current".count
         ) + 2
 
+        let swiftWidth = max(
+            results.compactMap { $0.package.swiftVersion?.count }.max() ?? 0,
+            "Swift".count
+        ) + 2
+
         let latestWidth = max(
             results.compactMap { result -> Int? in
                 switch result.status {
@@ -46,6 +51,7 @@ enum OutputFormatter {
         let separator = "+" + String(repeating: "-", count: nameWidth) +
                        "+" + String(repeating: "-", count: typeWidth) +
                        "+" + String(repeating: "-", count: currentWidth) +
+                       "+" + String(repeating: "-", count: swiftWidth) +
                        "+" + String(repeating: "-", count: latestWidth) +
                        "+" + String(repeating: "-", count: statusWidth) + "+"
 
@@ -53,6 +59,7 @@ enum OutputFormatter {
         print("| \(pad("Package", width: nameWidth - 2))" +
               " | \(pad("Type", width: typeWidth - 2))" +
               " | \(pad("Current", width: currentWidth - 2))" +
+              " | \(pad("Swift", width: swiftWidth - 2))" +
               " | \(pad("Latest", width: latestWidth - 2))" +
               " | \(pad("Status", width: statusWidth - 2)) |")
         print(separator)
@@ -62,12 +69,14 @@ enum OutputFormatter {
             let name = result.package.name
             let type = result.package.requirementType?.displayName ?? "Unknown"
             let current = result.package.currentVersion
+            let swift = result.package.swiftVersion ?? "N/A"
 
             let (latest, status) = getLatestAndStatus(result.status)
 
             print("| \(pad(name, width: nameWidth - 2))" +
                   " | \(pad(type, width: typeWidth - 2))" +
                   " | \(pad(current, width: currentWidth - 2))" +
+                  " | \(pad(swift, width: swiftWidth - 2))" +
                   " | \(pad(latest, width: latestWidth - 2))" +
                   " | \(pad(status, width: statusWidth - 2)) |")
         }

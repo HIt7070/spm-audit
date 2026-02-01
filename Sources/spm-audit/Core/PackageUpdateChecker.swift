@@ -105,6 +105,33 @@ final class PackageUpdateChecker: Sendable {
         }
     }
 
+    private func extractSwiftVersion(from checkoutPath: String) -> String? {
+        // Check if the checkout directory exists
+        guard fileManager.fileExists(atPath: checkoutPath) else {
+            return nil
+        }
+
+        let packageSwiftPath = (checkoutPath as NSString).appendingPathComponent("Package.swift")
+        guard let content = try? String(contentsOfFile: packageSwiftPath, encoding: .utf8) else {
+            return nil
+        }
+
+        // Pattern to match swift-tools-version comment at the top of Package.swift
+        // Examples: // swift-tools-version:5.7
+        //          // swift-tools-version: 5.9
+        //          // swift-tools-version:6.0
+        let pattern = #"//\s*swift-tools-version:\s*(\d+\.\d+)"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: content, options: [], range: NSRange(location: 0, length: (content as NSString).length)),
+              match.numberOfRanges == 2 else {
+            return nil
+        }
+
+        let versionRange = match.range(at: 1)
+        return (content as NSString).substring(with: versionRange)
+    }
+
     private func checkForUpdatesAsync(package: PackageInfo) async -> PackageUpdateResult {
         // Extract owner and repo from GitHub URL
         let components = package.url.components(separatedBy: "/")
@@ -126,14 +153,25 @@ final class PackageUpdateChecker: Sendable {
 
         let result = await githubClient.fetchLatestRelease(owner: owner, repo: repo, package: package)
 
-        // Check README and license in the dependency's checkout directory
+        // Check README, license, and Swift version in the dependency's checkout directory
         let checkoutPath = (workingDirectory as NSString).appendingPathComponent(".build/checkouts/\(package.name)")
         let readmeStatus = checkDependencyReadme(in: checkoutPath)
         let licenseType = checkDependencyLicense(in: checkoutPath)
+        let swiftVersion = extractSwiftVersion(from: checkoutPath)
 
-        // Return result with dependency's README and license status
+        // Create updated package with Swift version
+        let updatedPackage = PackageInfo(
+            name: result.package.name,
+            url: result.package.url,
+            currentVersion: result.package.currentVersion,
+            filePath: result.package.filePath,
+            requirementType: result.package.requirementType,
+            swiftVersion: swiftVersion
+        )
+
+        // Return result with dependency's README, license status, and Swift version
         return PackageUpdateResult(
-            package: result.package,
+            package: updatedPackage,
             status: result.status,
             readmeStatus: readmeStatus,
             licenseType: licenseType
