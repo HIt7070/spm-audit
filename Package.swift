@@ -8,13 +8,15 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        .package(url: "https://github.com/apple/swift-testing.git", branch: "main")
+        .package(url: "https://github.com/apple/swift-testing.git", branch: "main"),
+        .package(url: "https://github.com/Rspoon3/swift-ascii-table.git", branch: "main")
     ],
     targets: [
         .executableTarget(
             name: "spm-audit",
             dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "ASCIITable", package: "swift-ascii-table")
             ],
             path: "Sources"
         ),

@@ -1,5 +1,5 @@
 {
-  "originHash" : "311d3077ce8b795de49e5bfbaa3b74c472fec4be34f8999e6887e8537d7e8277",
+  "originHash" : "667bb7f9b7f49fb839f9643a451fb55f0162231350ebe05b32a47a1684d7a9ab",
   "pins" : [
     {
       "identity" : "swift-argument-parser",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
         "version" : "1.7.0"
+      }
+    },
+    {
+      "identity" : "swift-ascii-table",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Rspoon3/swift-ascii-table.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "f15caf144e43c100d58357f8428f4549a799623e"
       }
     },
     {
