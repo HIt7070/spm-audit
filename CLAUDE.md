@@ -193,9 +193,13 @@ For Xcode projects, it correlates Package.resolved entries with project.pbxproj 
 
 - Run `swift test` after making any code changes
 - Verify all tests pass before considering work complete
-- Add new tests for new features or bug fixes
+- **ALWAYS add new tests for new features or bug fixes** - this is not optional
 - Update existing tests when changing behavior
 - Never skip or disable tests without explicit discussion
+- New features must include tests that verify:
+  - Core functionality works as expected
+  - Edge cases are handled properly
+  - Integration with existing code is correct
 
 ### Adding New Features
 

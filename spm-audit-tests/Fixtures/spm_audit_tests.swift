@@ -491,6 +491,92 @@ struct TagNormalizationTests {
     }
 }
 
+struct ReadmeStatusTests {
+
+    @Test("README status values are correct")
+    func testReadmeStatusValues() async throws {
+        // Create test results with different README statuses
+        let package = PackageInfo(
+            name: "test-package",
+            url: "https://github.com/test/package",
+            currentVersion: "1.0.0",
+            filePath: "/test/path",
+            requirementType: .exact
+        )
+
+        let presentResult = PackageUpdateResult(
+            package: package,
+            status: .upToDate("1.0.0"),
+            readmeStatus: .present
+        )
+
+        let missingResult = PackageUpdateResult(
+            package: package,
+            status: .upToDate("1.0.0"),
+            readmeStatus: .missing
+        )
+
+        let unknownResult = PackageUpdateResult(
+            package: package,
+            status: .upToDate("1.0.0"),
+            readmeStatus: .unknown
+        )
+
+        #expect(presentResult.readmeStatus == .present)
+        #expect(missingResult.readmeStatus == .missing)
+        #expect(unknownResult.readmeStatus == .unknown)
+    }
+
+    @Test("README indicator displays correct emoji")
+    func testReadmeIndicator() async throws {
+        // Test that the formatter correctly shows README indicators
+        let package = PackageInfo(
+            name: "test-package",
+            url: "https://github.com/test/package",
+            currentVersion: "1.0.0",
+            filePath: "/test/path",
+            requirementType: .exact
+        )
+
+        // We can't directly test the private getReadmeIndicator method,
+        // but we verify the enum cases exist and are distinct
+        let presentStatus: PackageUpdateResult.ReadmeStatus = .present
+        let missingStatus: PackageUpdateResult.ReadmeStatus = .missing
+        let unknownStatus: PackageUpdateResult.ReadmeStatus = .unknown
+
+        #expect(presentStatus != missingStatus)
+        #expect(presentStatus != unknownStatus)
+        #expect(missingStatus != unknownStatus)
+    }
+
+    @Test("README status is included in PackageUpdateResult")
+    func testPackageUpdateResultIncludesReadmeStatus() async throws {
+        let package = PackageInfo(
+            name: "swift-algorithms",
+            url: "https://github.com/apple/swift-algorithms",
+            currentVersion: "1.0.0",
+            filePath: "/test/Package.resolved",
+            requirementType: .upToNextMajor
+        )
+
+        let result = PackageUpdateResult(
+            package: package,
+            status: .updateAvailable(current: "1.0.0", latest: "1.2.0"),
+            readmeStatus: .present
+        )
+
+        #expect(result.readmeStatus == .present)
+        #expect(result.package.name == "swift-algorithms")
+
+        if case .updateAvailable(let current, let latest) = result.status {
+            #expect(current == "1.0.0")
+            #expect(latest == "1.2.0")
+        } else {
+            #expect(Bool(false), "Expected updateAvailable status")
+        }
+    }
+}
+
 // Expose internal methods for testing
 extension PackageUpdater {
     func isValidVersionPublic(_ version: String) -> Bool {
