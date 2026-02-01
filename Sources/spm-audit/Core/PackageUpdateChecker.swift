@@ -124,32 +124,8 @@ final class PackageUpdateChecker: Sendable {
     }
 
     private func checkLocalReadme(for filePath: String) -> PackageUpdateResult.ReadmeStatus {
-        // Determine the directory to check based on the file path
-        let directory: String
-        if filePath.hasSuffix("Package.swift") {
-            // For Package.swift, check in the same directory
-            directory = (filePath as NSString).deletingLastPathComponent
-        } else if filePath.contains("Package.resolved") {
-            // For Package.resolved, check in the project root
-            // Navigate up from Package.resolved location to find the project root
-            if filePath.contains(".xcodeproj") {
-                // Xcode project: go up to the .xcodeproj's parent directory
-                let components = filePath.components(separatedBy: "/")
-                if let xcodeIndex = components.firstIndex(where: { $0.hasSuffix(".xcodeproj") }) {
-                    let projectComponents = components.prefix(xcodeIndex)
-                    directory = projectComponents.joined(separator: "/")
-                } else {
-                    directory = workingDirectory
-                }
-            } else {
-                // SPM package: Package.resolved is usually in the root
-                directory = (filePath as NSString).deletingLastPathComponent
-            }
-        } else {
-            directory = workingDirectory
-        }
-
-        let readmePath = (directory as NSString).appendingPathComponent("README.md")
+        // Simply check if README.md exists in the working directory
+        let readmePath = (workingDirectory as NSString).appendingPathComponent("README.md")
         return fileManager.fileExists(atPath: readmePath) ? .present : .missing
     }
 
