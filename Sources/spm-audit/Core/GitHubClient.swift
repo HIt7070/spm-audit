@@ -299,7 +299,7 @@ final class GitHubClient: Sendable {
         }
     }
 
-    func fetchLastCommitDate(owner: String, repo: String) async -> String? {
+    func fetchLastCommitDate(owner: String, repo: String) async -> Date? {
         let urlString = "https://api.github.com/repos/\(owner)/\(repo)/commits?per_page=1"
 
         guard let url = URL(string: urlString) else {
@@ -330,18 +330,10 @@ final class GitHubClient: Sendable {
                 return nil
             }
 
-            // Parse and format the date
+            // Parse and return the date
             let dateString = latestCommit.commit.committer.date
             let isoFormatter = ISO8601DateFormatter()
-
-            if let date = isoFormatter.date(from: dateString) {
-                let displayFormatter = DateFormatter()
-                displayFormatter.dateStyle = .medium
-                displayFormatter.timeStyle = .none
-                return displayFormatter.string(from: date)
-            }
-
-            return nil
+            return isoFormatter.date(from: dateString)
         } catch {
             return nil
         }

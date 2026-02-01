@@ -14,7 +14,7 @@ struct PackageUpdateResult {
     let licenseType: LicenseType
     let claudeFileStatus: FileStatus
     let agentsFileStatus: FileStatus
-    let lastCommitDate: String?
+    let lastCommitDate: Date?
 
     enum UpdateStatus {
         case upToDate(String)
