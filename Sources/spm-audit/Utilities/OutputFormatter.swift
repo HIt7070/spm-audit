@@ -24,7 +24,7 @@ enum OutputFormatter {
 
         // Create table with columns
         let table = ASCIITable(columns: ["Package", "Type", "Current", "Swift", "Latest", "Status",
-                                          "README", "License", "CLAUDE.md", "AGENTS.md"])
+                                          "README", "License", "CLAUDE.md", "AGENTS.md", "Last Commit"])
 
         // Add rows for each result
         for result in results {
@@ -37,9 +37,10 @@ enum OutputFormatter {
             let claude = getFileIndicator(result.claudeFileStatus)
             let agents = getFileIndicator(result.agentsFileStatus)
             let (latest, status) = getLatestAndStatus(result.status)
+            let lastCommit = formatLastCommitDate(result.lastCommitDate)
 
             table.addRow([name, type, current, swift, latest, status,
-                          readme, license, claude, agents])
+                          readme, license, claude, agents, lastCommit])
         }
 
         // Print the table
@@ -111,6 +112,34 @@ enum OutputFormatter {
             return "❌"
         case .unknown:
             return "❓"
+        }
+    }
+
+    private static func formatLastCommitDate(_ date: Date?) -> String {
+        guard let date = date else {
+            return "N/A"
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        let dateString = formatter.string(from: date)
+
+        // Calculate age
+        let ageInDays = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        let sixMonthsInDays = 182 // Approximately 6 months
+        let oneYearInDays = 365
+
+        // Apply color codes based on age
+        if ageInDays > oneYearInDays {
+            // Red for older than a year
+            return "\u{001B}[31m\(dateString)\u{001B}[0m"
+        } else if ageInDays > sixMonthsInDays {
+            // Yellow for 6 months to a year
+            return "\u{001B}[33m\(dateString)\u{001B}[0m"
+        } else {
+            // Green for newer than 6 months
+            return "\u{001B}[32m\(dateString)\u{001B}[0m"
         }
     }
 
