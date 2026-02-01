@@ -235,82 +235,20 @@ final class PackageUpdateChecker: Sendable {
     }
 
     private func detectLicenseType(from content: String) -> PackageUpdateResult.LicenseType {
-        let uppercased = content.uppercased()
-
-        // Check for specific license types based on content (ordered by specificity)
-
-        // GNU licenses (check most specific first)
-        if uppercased.contains("GNU AFFERO GENERAL PUBLIC LICENSE") ||
-           (uppercased.contains("AGPL") && uppercased.contains("VERSION")) {
-            return .agpl
-        } else if uppercased.contains("GNU LESSER GENERAL PUBLIC LICENSE") ||
-                  uppercased.contains("GNU LIBRARY GENERAL PUBLIC LICENSE") ||
-                  (uppercased.contains("LGPL") && uppercased.contains("VERSION")) {
-            return .lgpl
-        } else if uppercased.contains("GNU GENERAL PUBLIC LICENSE") ||
-                  (uppercased.contains("GPL") && uppercased.contains("VERSION") &&
-                   !uppercased.contains("LGPL") && !uppercased.contains("AGPL")) {
-            return .gpl
-        }
-
-        // Permissive licenses
-        else if uppercased.contains("MIT LICENSE") ||
-                (uppercased.contains("MIT") && uppercased.contains("PERMISSION IS HEREBY GRANTED")) {
-            return .mit
-        } else if uppercased.contains("APACHE LICENSE") ||
-                  (uppercased.contains("APACHE") && uppercased.contains("VERSION 2.0")) {
-            return .apache
-        } else if (uppercased.contains("BSD") && uppercased.contains("REDISTRIBUTION")) ||
-                  uppercased.contains("BSD-2-CLAUSE") ||
-                  uppercased.contains("BSD-3-CLAUSE") {
-            return .bsd
-        } else if uppercased.contains("ISC LICENSE") ||
-                  (uppercased.contains("ISC") && uppercased.contains("PERMISSION TO USE")) {
-            return .isc
-        }
-
-        // Mozilla and other copyleft
-        else if uppercased.contains("MOZILLA PUBLIC LICENSE") ||
-                (uppercased.contains("MPL") && uppercased.contains("VERSION")) {
-            return .mpl
-        } else if uppercased.contains("ECLIPSE PUBLIC LICENSE") ||
-                  uppercased.contains("EPL") {
-            return .epl
-        } else if uppercased.contains("EUROPEAN UNION PUBLIC LICENCE") ||
-                  uppercased.contains("EUPL") {
-            return .eupl
-        }
-
-        // Public domain and permissive
-        else if uppercased.contains("UNLICENSE") ||
-                uppercased.contains("THIS IS FREE AND UNENCUMBERED SOFTWARE RELEASED INTO THE PUBLIC DOMAIN") {
-            return .unlicense
-        } else if uppercased.contains("CC0") ||
-                  uppercased.contains("CREATIVE COMMONS ZERO") {
-            return .cc0
-        }
-
-        // Other known licenses
-        else if uppercased.contains("ARTISTIC LICENSE") {
-            return .artistic
-        } else if uppercased.contains("BOOST SOFTWARE LICENSE") {
-            return .boost
-        } else if uppercased.contains("WTFPL") ||
-                  uppercased.contains("DO WHAT THE FUCK YOU WANT") {
-            return .wtfpl
-        } else if uppercased.contains("ZLIB LICENSE") {
-            return .zlib
+        // Check against all defined licenses
+        for definition in LicenseDefinition.all {
+            if definition.matches(content) {
+                return definition.type
+            }
         }
 
         // Unknown license - try to extract first line
-        else {
-            let lines = content.components(separatedBy: .newlines)
-            if let firstLine = lines.first?.trimmingCharacters(in: .whitespaces),
-               !firstLine.isEmpty {
-                return .other(firstLine.prefix(50).description)
-            }
-            return .unknown
+        let lines = content.components(separatedBy: .newlines)
+        if let firstLine = lines.first?.trimmingCharacters(in: .whitespaces),
+           !firstLine.isEmpty {
+            return .other(firstLine.prefix(50).description)
         }
+        return .unknown
     }
 
     private func getDirectoryPath(for filePath: String) -> String {

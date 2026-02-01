@@ -507,19 +507,22 @@ struct ReadmeStatusTests {
         let presentResult = PackageUpdateResult(
             package: package,
             status: .upToDate("1.0.0"),
-            readmeStatus: .present
+            readmeStatus: .present,
+            licenseType: .mit
         )
 
         let missingResult = PackageUpdateResult(
             package: package,
             status: .upToDate("1.0.0"),
-            readmeStatus: .missing
+            readmeStatus: .missing,
+            licenseType: .missing
         )
 
         let unknownResult = PackageUpdateResult(
             package: package,
             status: .upToDate("1.0.0"),
-            readmeStatus: .unknown
+            readmeStatus: .unknown,
+            licenseType: .unknown
         )
 
         #expect(presentResult.readmeStatus == .present)
@@ -562,7 +565,8 @@ struct ReadmeStatusTests {
         let result = PackageUpdateResult(
             package: package,
             status: .updateAvailable(current: "1.0.0", latest: "1.2.0"),
-            readmeStatus: .present
+            readmeStatus: .present,
+            licenseType: .apache
         )
 
         #expect(result.readmeStatus == .present)
